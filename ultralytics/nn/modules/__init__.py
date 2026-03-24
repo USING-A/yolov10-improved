@@ -43,6 +43,7 @@ from .block import (
     RepNCSPELAN4,
     ADown,
     SPPELAN,
+    BiFPNFuse,
     CBFuse,
     CBLinear,
     Silence,
@@ -53,6 +54,8 @@ from .block import (
 )
 from .conv import (
     CBAM,
+    ECAAttention,
+    EdgeEnhance,
     ChannelAttention,
     Concat,
     Conv,
@@ -93,6 +96,8 @@ __all__ = (
     "ChannelAttention",
     "SpatialAttention",
     "CBAM",
+    "ECAAttention",
+    "EdgeEnhance",
     "Concat",
     "TransformerLayer",
     "TransformerBlock",
@@ -136,6 +141,7 @@ __all__ = (
     "RepNCSPELAN4",
     "ADown",
     "SPPELAN",
+    "BiFPNFuse",
     "CBFuse",
     "CBLinear",
     "Silence",

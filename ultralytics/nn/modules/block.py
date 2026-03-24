@@ -36,6 +36,7 @@ __all__ = (
     "ADown",
     "SPPELAN",
     "CBFuse",
+    "BiFPNFuse",
     "CBLinear",
     "Silence",
 )
@@ -697,6 +698,30 @@ class CBFuse(nn.Module):
         res = [F.interpolate(x[self.idx[i]], size=target_size, mode="nearest") for i, x in enumerate(xs[:-1])]
         out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
         return out
+
+
+class BiFPNFuse(nn.Module):
+    """Learnable weighted feature fusion used by BiFPN-style neck connections."""
+
+    def __init__(self, c1s, c2, eps=1e-4):
+        """Initialize fusion with input channel list and target output channels."""
+        super().__init__()
+        self.eps = eps
+        self.weights = nn.Parameter(torch.ones(len(c1s), dtype=torch.float32))
+        self.proj = nn.ModuleList(Conv(c, c2, 1, 1) if c != c2 else nn.Identity() for c in c1s)
+
+    def forward(self, xs):
+        """Fuse multiple scale features by normalized learnable weights."""
+        target_size = xs[0].shape[2:]
+        ws = F.relu(self.weights)
+        ws = ws / (ws.sum() + self.eps)
+        feats = []
+        for i, x in enumerate(xs):
+            x = self.proj[i](x)
+            if x.shape[2:] != target_size:
+                x = F.interpolate(x, size=target_size, mode="nearest")
+            feats.append(ws[i] * x)
+        return torch.stack(feats, dim=0).sum(dim=0)
 
 
 class RepVGGDW(torch.nn.Module):

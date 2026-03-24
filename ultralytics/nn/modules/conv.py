@@ -6,6 +6,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 __all__ = (
     "Conv",
@@ -19,6 +20,8 @@ __all__ = (
     "ChannelAttention",
     "SpatialAttention",
     "CBAM",
+    "ECAAttention",
+    "EdgeEnhance",
     "Concat",
     "RepConv",
 )
@@ -309,15 +312,66 @@ class SpatialAttention(nn.Module):
 class CBAM(nn.Module):
     """Convolutional Block Attention Module."""
 
-    def __init__(self, c1, kernel_size=7):
-        """Initialize CBAM with given input channel (c1) and kernel size."""
+    def __init__(self, c1, c2=None, kernel_size=7):
+        """Initialize CBAM with optional channel projection and kernel size."""
         super().__init__()
-        self.channel_attention = ChannelAttention(c1)
+        c2 = c1 if c2 is None else c2
+        self.cv = Conv(c1, c2, 1, 1) if c1 != c2 else nn.Identity()
+        self.channel_attention = ChannelAttention(c2)
         self.spatial_attention = SpatialAttention(kernel_size)
 
     def forward(self, x):
         """Applies the forward pass through C1 module."""
+        x = self.cv(x)
         return self.spatial_attention(self.channel_attention(x))
+
+
+class ECAAttention(nn.Module):
+    """Efficient Channel Attention with optional channel projection."""
+
+    def __init__(self, c1, c2=None, k_size=3):
+        """Initialize ECA attention block."""
+        super().__init__()
+        c2 = c1 if c2 is None else c2
+        self.cv = Conv(c1, c2, 1, 1) if c1 != c2 else nn.Identity()
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        self.act = nn.Sigmoid()
+
+    def forward(self, x):
+        """Apply channel reweighting from local cross-channel interaction."""
+        x = self.cv(x)
+        y = self.pool(x).squeeze(-1).transpose(-1, -2)
+        y = self.conv(y)
+        y = self.act(y).transpose(-1, -2).unsqueeze(-1)
+        return x * y
+
+
+class EdgeEnhance(nn.Module):
+    """Lightweight Sobel-based edge enhancement block."""
+
+    def __init__(self, c1, c2=None, alpha=0.5):
+        """Initialize edge enhancement block."""
+        super().__init__()
+        c2 = c1 if c2 is None else c2
+        self.cv = Conv(c1, c2, 1, 1) if c1 != c2 else nn.Identity()
+        self.alpha = alpha
+        kernel_x = torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], dtype=torch.float32)
+        kernel_y = torch.tensor([[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]], dtype=torch.float32)
+        self.register_buffer("kernel_x", kernel_x.view(1, 1, 3, 3))
+        self.register_buffer("kernel_y", kernel_y.view(1, 1, 3, 3))
+
+    def forward(self, x):
+        """Inject normalized edge cues to improve boundary sensitivity."""
+        x = self.cv(x)
+        c = x.shape[1]
+        kx = self.kernel_x.expand(c, 1, 3, 3)
+        ky = self.kernel_y.expand(c, 1, 3, 3)
+        gx = F.conv2d(x, kx, padding=1, groups=c)
+        gy = F.conv2d(x, ky, padding=1, groups=c)
+        edge = torch.sqrt(gx * gx + gy * gy + 1e-6)
+        edge = edge / (edge.amax(dim=(2, 3), keepdim=True) + 1e-6)
+        return x + self.alpha * edge
 
 
 class Concat(nn.Module):

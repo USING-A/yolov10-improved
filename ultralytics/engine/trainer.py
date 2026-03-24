@@ -489,6 +489,7 @@ class BaseTrainer:
             "ema": deepcopy(self.ema.ema).half(),
             "updates": self.ema.updates,
             "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict() if self.scheduler is not None else None,
             "train_args": vars(self.args),  # save as dict
             "train_metrics": metrics,
             "train_results": results,
@@ -622,7 +623,8 @@ class BaseTrainer:
         """Performs final evaluation and validation for object detection YOLO model."""
         for f in self.last, self.best:
             if f.exists():
-                strip_optimizer(f)  # strip optimizers
+                if f is self.best:
+                    strip_optimizer(f)  # keep last.pt full-state for true resume continuity
                 if f is self.best:
                     LOGGER.info(f"\nValidating {f}...")
                     self.validator.args.plots = self.args.plots
@@ -646,7 +648,7 @@ class BaseTrainer:
                 resume = True
                 self.args = get_cfg(ckpt_args)
                 self.args.model = self.args.resume = str(last)  # reinstate model
-                for k in "imgsz", "batch", "device":  # allow arg updates to reduce memory or update device on resume
+                for k in "imgsz", "batch", "device", "epochs":  # allow safe arg updates on resume
                     if k in overrides:
                         setattr(self.args, k, overrides[k])
 
@@ -662,23 +664,40 @@ class BaseTrainer:
         if ckpt is None or not self.resume:
             return
         best_fitness = 0.0
-        start_epoch = ckpt["epoch"] + 1
-        if ckpt["optimizer"] is not None:
-            self.optimizer.load_state_dict(ckpt["optimizer"])  # optimizer
-            best_fitness = ckpt["best_fitness"]
+        start_epoch = ckpt.get("epoch", -1) + 1
+
+        # Native resume requires full-state checkpoint continuity.
+        if start_epoch <= 0:
+            raise AssertionError(
+                f"Checkpoint {self.args.model} has invalid epoch metadata (epoch={ckpt.get('epoch')}). "
+                "This checkpoint appears stripped and cannot be used for native resume. "
+                "Please resume from a non-stripped weights/last.pt checkpoint."
+            )
+
+        if ckpt.get("optimizer") is None:
+            raise AssertionError(
+                f"Optimizer state missing in {self.args.model}. "
+                "Native resume requires optimizer continuity. "
+                "Please resume from a non-stripped weights/last.pt checkpoint."
+            )
+
+        self.optimizer.load_state_dict(ckpt["optimizer"])  # optimizer
+        best_fitness = ckpt.get("best_fitness", 0.0)
+        if self.scheduler is not None and ckpt.get("scheduler") is not None:
+            self.scheduler.load_state_dict(ckpt["scheduler"])
+        elif self.scheduler is not None:
+            LOGGER.warning("Scheduler state not found in checkpoint; continuing with an inferred scheduler position.")
         if self.ema and ckpt.get("ema"):
             self.ema.ema.load_state_dict(ckpt["ema"].float().state_dict())  # EMA
             self.ema.updates = ckpt["updates"]
-        assert start_epoch > 0, (
-            f"{self.args.model} training to {self.epochs} epochs is finished, nothing to resume.\n"
-            f"Start a new training without resuming, i.e. 'yolo train model={self.args.model}'"
-        )
-        LOGGER.info(f"Resuming training {self.args.model} from epoch {start_epoch + 1} to {self.epochs} total epochs")
-        if self.epochs < start_epoch:
-            LOGGER.info(
-                f"{self.model} has been trained for {ckpt['epoch']} epochs. Fine-tuning for {self.epochs} more epochs."
+
+        if self.epochs <= start_epoch:
+            raise AssertionError(
+                f"{self.args.model} has already reached epoch {start_epoch}. "
+                f"Please set epochs > {start_epoch} when resuming."
             )
-            self.epochs += ckpt["epoch"]  # finetune additional epochs
+
+        LOGGER.info(f"Resuming training {self.args.model} from epoch {start_epoch + 1} to {self.epochs} total epochs")
         self.best_fitness = best_fitness
         self.start_epoch = start_epoch
         if start_epoch > (self.epochs - self.args.close_mosaic):

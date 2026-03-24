@@ -133,18 +133,30 @@ def verify_image_label(args):
                 assert points.max() <= 1, f"non-normalized or out of bounds coordinates {points[points > 1]}"
                 assert lb.min() >= 0, f"negative label values {lb[lb < 0]}"
 
-                # All labels
-                max_cls = lb[:, 0].max()  # max label count
-                assert max_cls <= num_cls, (
-                    f"Label class {int(max_cls)} exceeds dataset class count {num_cls}. "
-                    f"Possible class labels are 0-{num_cls - 1}"
-                )
-                _, i = np.unique(lb, axis=0, return_index=True)
-                if len(i) < nl:  # duplicate row check
-                    lb = lb[i]  # remove duplicates
+                # Filter out labels with out-of-range class ids instead of failing the whole sample.
+                valid_cls = (lb[:, 0] >= 0) & (lb[:, 0] < num_cls)
+                if not valid_cls.all():
+                    removed = int((~valid_cls).sum())
+                    lb = lb[valid_cls]
                     if segments:
-                        segments = [segments[x] for x in i]
-                    msg = f"{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed"
+                        segments = [segments[x] for x, keep in enumerate(valid_cls.tolist()) if keep]
+                    msg = (
+                        f"{msg}; " if msg else ""
+                    ) + f"{prefix}WARNING ⚠️ {im_file}: removed {removed} labels with invalid class ids outside 0-{num_cls - 1}"
+
+                # All labels
+                nl = len(lb)
+                if nl == 0:
+                    ne = 1
+                    lb = np.zeros((0, (5 + nkpt * ndim) if keypoint else 5), dtype=np.float32)
+
+                if nl:
+                    _, i = np.unique(lb, axis=0, return_index=True)
+                    if len(i) < nl:  # duplicate row check
+                        lb = lb[i]  # remove duplicates
+                        if segments:
+                            segments = [segments[x] for x in i]
+                        msg = f"{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed"
             else:
                 ne = 1  # label empty
                 lb = np.zeros((0, (5 + nkpt * ndim) if keypoint else 5), dtype=np.float32)
