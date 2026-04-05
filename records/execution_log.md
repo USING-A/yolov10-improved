@@ -38,3 +38,5 @@ This file tracks command-level execution in implementation phase.
 | 2026-03-31 09:12 | Mainline | Frozen AdamW as default downstream profile | Success | Mainline freeze decision confirmed by 2-seed 100-epoch validation. |
 | 2026-03-31 09:20 | Step 11 | Updated ablation and recommendation reports to closed state | Success | `reports/module_ablation.md` and `reports/final_recommendation.md` now reflect frozen AdamW mainline conclusion. |
 | 2026-03-31 09:22 | Step 11 | Synced planning status and report index | Success | `planner/plan.md` marks Step 9 and Step 11 complete; waiting gate is negative-sample dataset delivery. |
+| 2026-04-05 17:47 | Module Screening | Started 150-epoch alignment queue for baseline + single-module runs | Running | First launch had python `-c` quoting issue; detected by queue log and stderr. |
+| 2026-04-05 17:48 | Module Screening | Fixed `records/screening_to150_queue.ps1` launcher and relaunched queue | Running | Baseline and Edge resume confirmed active; scheduler enforces max concurrency=2 and will continue remaining runs. |

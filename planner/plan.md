@@ -218,6 +218,16 @@
 - 当前执行边界：主线已冻结（AdamW）；后续仅执行主线增量实验与负样本末阶段微调。
 - 执行闸门：负样本微调步骤需等待用户提供空标签负样本集后再启动。
 
+2026-04-05 补充执行（单模块公平对照修正）：
+- 根据对照口径统一要求，已启动 baseline + 各单模块补跑至 150 epochs：
+  - `baseline_bauto_nbs128`
+  - `screen_yolov10n_edge_e100_auto`
+  - `screen_yolov10n_cbam_e100_auto`
+  - `screen_yolov10n_eca_e100_auto`
+  - `screen_yolov10n_bifpn_e100_auto`
+- 调度方式：`records/screening_to150_queue.ps1` 自动队列，并发上限 2。
+- 当前状态：执行中，待全部 run 达到 150 epochs 后回填 `experiments/module_screening.csv` 并输出统一 150-epoch 对照结论。
+
 ## 9. 附录：技术选型模块逐项说明
 
 ### 9.1 BiFPN（加权双向特征金字塔）
