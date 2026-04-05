@@ -6,3 +6,7 @@ Typical outputs:
 - module ablation report
 - hyperparameter tuning summary
 - final recommended configuration report
+
+Current status (2026-03-31):
+- module_ablation.md: completed
+- final_recommendation.md: frozen-mainline decision completed

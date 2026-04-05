@@ -58,18 +58,19 @@ sys.path.insert(0, r'd:\\Github Code\\yolov10-improved')  # Windows 路径
 2. **避免使用 CLI 直接调用**（yolo 命令），改为 Python API 并指定本地路径
 3. **监控机制**：定期检查 results.csv 更新时间戳，≥6 小时无更新即告警
 
-## 进度更新
+## 进度更新（2026-03-25 收口）
 
 | 运行名称 | 目标 Epoch | 当前状态 | Best mAP50 | 备注 |
 |---------|----------|--------|-----------|------|
 | combo_bifpn_cbam_e150_auto | 150 | ✅ 完成 | 0.96248 | 已完成 |
-| combo_bifpn_eca_e150_auto | 150 | ✅ 完成 | 0.96048 | 之前已完成 |
-| combo_cbam_eca_e150_auto | 150 | 🔄 运行中（新实例） | N/A | fresh start, epoch 2 进行中 |
-| combo_bifpn_edge_e150_auto | 150 | ⏳ 待启动 | N/A | 将在 cbam_eca 完成后启动 |
+| combo_bifpn_eca_e150_auto | 150 | ✅ 完成 | 0.96073 | 已完成 |
+| combo_cbam_eca_e150_auto | 150 | ✅ 完成 | 0.96331 | 恢复续跑完成 |
+| combo_bifpn_edge_e150_auto | 150 | ✅ 完成 | 0.96193 | 恢复续跑完成 |
+| combo_cbam_eca_e150_fresh_direct | 150 | ✅ 完成 | 0.96542 | 本地路径 fresh 直训，当前最优 |
 
-## 下一步
+## 收口结论
 
-1. 监控 `combo_cbam_eca_e150_fresh_direct` 完成（预计 48 小时）
-2. 当其完成后启动 `combo_bifpn_edge_e150_auto` fresh 实例  
-3. 两个新训练完成后，汇总所有组合结果至 `experiments/combination_ablation.csv`
-4. 给出 Step 6 模块组合选优结论
+1. 训练中断根因已定位并规避：后续统一使用本地 ultralytics 路径优先策略进行训练。
+2. Step 6 目标已达成：四个主组合均完成 150 epoch，且指标均已写入 `experiments/combination_ablation.csv`。
+3. 组合阶段当前最优为 `combo_cbam_eca_e150_fresh_direct`（mAP50=0.96542，mAP50-95=0.83978）。
+4. 下一阶段建议：进入 Step 9 单 YAML 超参数调优，并以 `yolov10n_cbam_eca.yaml` 为主候选配置。

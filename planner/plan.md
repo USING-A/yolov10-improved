@@ -197,11 +197,11 @@
 - 交付物：模块代码 + 对应 YAML
 - 完成标准：在遮挡/重叠样例上有可观测定位改进趋势。
 
-8. 组合实验与初步选优（执行中）
+8. 组合实验与初步选优（已完成）
 - 交付物：模块组合对比表
 - 完成标准：确定 1 套最优组合进入超参调优。
 
-9. 单 YAML 超参数调优
+9. 单 YAML 超参数调优（已完成）
 - 交付物：`configs/apple_hyp.yaml` 与调优记录
 - 完成标准：所有调优实验仅通过该 YAML 驱动。
 
@@ -209,13 +209,13 @@
 - 交付物：微调结果与误检变化分析
 - 完成标准：误检下降且主指标无不可接受退化。
 
-11. 消融总结与阶段报告
+11. 消融总结与阶段报告（已完成）
 - 交付物：消融报告与最终推荐配置
 - 完成标准：结论可复现、可解释、可交接。
 
 ## 8. 阶段状态
-- 当前阶段：Implementation（执行到负样本微调前）
-- 当前执行边界：模块实现、基线、单模块/组合实验、超参数调优可执行；负样本微调暂缓。
+- 当前阶段：Step11 收口完成，进入负样本微调等待态。
+- 当前执行边界：主线已冻结（AdamW）；后续仅执行主线增量实验与负样本末阶段微调。
 - 执行闸门：负样本微调步骤需等待用户提供空标签负样本集后再启动。
 
 ## 9. 附录：技术选型模块逐项说明
@@ -541,7 +541,7 @@
 - Step 6 持续执行当前组合训练。
 - 并行补齐 `experiments/baseline.csv` 与 `experiments/module_screening.csv` 的已完成实验记录，消除“有 run 无台账”的追溯断点。
 
-### Step 6: 模块组合实验（执行中）
+### Step 6: 模块组合实验（已完成）
 执行约束（严格）：
 - 严格遵循 research/plan 既定边界：单类苹果检测、统一超参文件、`batch=-1`、不改公共 API。
 - 本阶段所有新组合训练总轮次统一为 150 epoch。
@@ -560,9 +560,9 @@
 - `runs/apple/combo_bifpn_cbam_e150_auto`：已完成 150 epoch，当前 best mAP50≈0.96248。
 - `runs/apple/combo_bifpn_eca_e150_auto`：已完成 150 epoch，当前 best mAP50≈0.96073。
 
-下一批两组组合（执行中）：
-- `ultralytics/cfg/models/v10/yolov10n_cbam_eca.yaml` -> `runs/apple/combo_cbam_eca_e150_auto`（已恢复续跑，56/150 -> 150）。
-- `ultralytics/cfg/models/v10/yolov10n_bifpn_edge.yaml` -> `runs/apple/combo_bifpn_edge_e150_auto`（已恢复续跑，48/150 -> 150）。
+下一批两组组合（已完结）：
+- `ultralytics/cfg/models/v10/yolov10n_cbam_eca.yaml` -> `runs/apple/combo_cbam_eca_e150_auto`（恢复续跑完成，150/150）。
+- `ultralytics/cfg/models/v10/yolov10n_bifpn_edge.yaml` -> `runs/apple/combo_bifpn_edge_e150_auto`（恢复续跑完成，150/150）。
 
 2026-03-24 恢复动作（新增）：
 - 已核验两组 run 的 `weights/last.pt` 与 `results.csv` 连续性，均满足原生 `resume=True` 条件。
@@ -571,6 +571,129 @@
   - `combo_bifpn_edge_e150_auto` 从 epoch 49 继续。
 - 已将当前已完成与进行中组合结果写入 `experiments/combination_ablation.csv`，并与 baseline 对照关系保持一致。
 
+Step 6 最终结果（2026-03-25 收口）：
+- `combo_bifpn_cbam_e150_auto`：mAP50≈0.96248，mAP50-95≈0.83293。
+- `combo_bifpn_eca_e150_auto`：mAP50≈0.96073，mAP50-95≈0.83147。
+- `combo_cbam_eca_e150_auto`：mAP50≈0.96331，mAP50-95≈0.83753。
+- `combo_bifpn_edge_e150_auto`：mAP50≈0.96193，mAP50-95≈0.83129。
+- `combo_cbam_eca_e150_fresh_direct`：mAP50≈0.96542，mAP50-95≈0.83978（当前最优）。
+
+阶段结论：
+- 组合策略成立，且“注意力组合（CBAM+ECA）”在当前数据集上优于“融合+注意力/边缘”路线。
+- Step 8（组合实验与初步选优）收口，进入 Step 9 单 YAML 超参数调优。
+
 下一步：
-- 持续监控两组恢复任务直至 150 epoch 完结。
-- 完结后更新 `experiments/combination_ablation.csv` 为最终指标，并给出 Step 6 阶段选优结论（含是否进入 Step 9 超参调优的候选组合）。
+- 以 `ultralytics/cfg/models/v10/yolov10n_cbam_eca.yaml` 为主候选，执行 Step 9 超参数调优。
+- 调优仍严格使用 `configs/apple_hyp.yaml` 单文件管理，并把每次变更与 run 路径写入 `experiments/hyperparam_tuning.csv`。
+
+### Step 9: 单 YAML 超参数调优（执行中）
+启动动作（2026-03-25）：
+- 已将 `configs/apple_hyp.yaml` 切换到 Step9-T01 配置：`lr0/lrf=0.008`、`weight_decay=0.00045`、`box=8.0`、`cls=0.45`、`dfl=1.7`。
+- 已登记调优任务：`experiments/hyperparam_tuning.csv` 新增 `tune_cbam_eca_t01_e100_auto`。
+- 已启动训练：`runs/apple/tune_cbam_eca_t01_e100_auto`（100 epoch，`batch=-1`，单 YAML 驱动）。
+
+当前状态：
+- 训练进程已启动并处于初始化/写盘前阶段；持续监控 `results.csv` 生成与 epoch 进度。
+- Step 9 阶段并发硬约束：同一时刻最多 2 个训练进程，超出即暂停/排队，防止训练卡死。
+
+下一步：
+- 待 T01 训练结束后回填 `precision/recall/map50/map50_95` 至 `experiments/hyperparam_tuning.csv`。
+- 基于 T01 结果决定 T02（学习率或损失权重单变量微调方向）。
+
+### Step 9B: 损失函数改进与非结构策略实验（已完成）
+目标：
+- 按 Research 要求补充“仅损失函数/训练策略”改进验证，不改网络结构。
+
+已完成改造：
+- 在 `ultralytics/utils/loss.py` 增加可配置损失开关：
+  - `iou_type`：`iou/giou/diou/ciou`；
+  - `cls_loss`：`bce/focal/varifocal`；
+  - `focal_gamma`、`focal_alpha`。
+- 在 `ultralytics/cfg/default.yaml` 与 `configs/apple_hyp.yaml` 注册上述超参数键（默认保持原行为：`ciou+bce`）。
+
+已启动实验（2026-03-25）：
+- `runs/apple/tune_cbam_eca_loss_diou_focal_e60`：`diou + focal`（60 epoch）。
+- `runs/apple/tune_cbam_eca_strategy_cosine_ls_e60`：`cos_lr + label_smoothing + close_mosaic`（60 epoch）。
+- `runs/apple/tune_cbam_eca_t01_e100_auto` 持续运行（Step9-T01）。
+
+执行结果（2026-03-27 汇总）：
+- `tune_cbam_eca_t01_e100_auto`：mAP50≈0.95346，mAP50-95≈0.81395。
+- `tune_cbam_eca_loss_diou_focal_e60`：mAP50≈0.36709，mAP50-95≈0.30942（强负向）。
+- `tune_cbam_eca_loss_giou_varifocal_e60`：mAP50≈0.48914，mAP50-95≈0.40708（强负向）。
+- `tune_cbam_eca_strategy_cosine_ls_e60`：mAP50≈0.93472，mAP50-95≈0.77945（相对 T01 负向）。
+
+阶段结论：
+- 在当前数据与配置下，损失函数改造（DIoU+Focal、GIoU+Varifocal）均显著劣于基线损失，不进入下一阶段。
+- 非结构训练策略（cos_lr + label_smoothing + close_mosaic 调整）未优于 T01，不进入下一阶段。
+- Step9B 收口：保留 `T01` 作为 Step9 输出候选，后续若继续优化，建议回到小步单变量调优（学习率/权重衰减/box-cls-dfl 权重）而非更换分类损失形式。
+
+下一步：
+- 持续监控上述 run 的 `results.csv` 落盘与最佳指标。
+- 完成后回填 `experiments/hyperparam_tuning.csv`，并比较“损失改进 vs 训练策略改进”的收益差异。
+
+2026-03-26 进展快照（新增）：
+- `tune_cbam_eca_t01_e100_auto` 已完成：mAP50≈0.95346，mAP50-95≈0.81395。
+- `tune_cbam_eca_loss_diou_focal_e60` 已完成：mAP50≈0.36709，mAP50-95≈0.30942（相对基线显著退化，判定为负向方案）。
+- 已停止旧排队器的高频重复拉起行为，改为手动受控并发（上限=2）。
+- `tune_cbam_eca_strategy_cosine_ls_e60` 与 `tune_cbam_eca_loss_giou_varifocal_e60` 已重新拉起并进入训练迭代。
+
+当前执行策略：
+- 保持最多 2 个训练并发。
+- Step9B 已完成，进入 Step 11 消融总结与最终推荐配置整理。
+
+### Step 9C: 非框架参数优化补充实验（已完成）
+目标：
+- 在不改网络结构和不改框架代码前提下，继续尝试可回滚的参数级优化方法。
+
+新增实验设计（2026-03-27）：
+- `tune_cbam_eca_opt_adamw_e60`：优化器切换到 AdamW，`lr0=0.0012`，`weight_decay=0.01`。
+- `tune_cbam_eca_aug_mosaic07_e60`：增强策略调整，`mosaic=0.7`，`translate=0.05`，`scale=0.4`，`close_mosaic=15`。
+- `tune_cbam_eca_strategy_multiscale_e60`：训练策略调整，`multi_scale=True`，`warmup_epochs=5.0`。
+
+执行约束：
+- 并发上限始终为 2。
+- 先跑前两组，第三组在槽位释放后启动。
+- 所有结果回填到 `experiments/hyperparam_tuning.csv`。
+
+当前状态（2026-03-29 更新）：
+- ✅ 三组实验均已完成（60 epochs）：
+  - `tune_cbam_eca_opt_adamw_e60`：mAP50=0.94108，mAP50-95=0.79186。
+  - `tune_cbam_eca_aug_mosaic07_e60`：mAP50=0.93896，mAP50-95=0.78955。
+  - `tune_cbam_eca_strategy_multiscale_e60`：mAP50=0.92477，mAP50-95=0.76839。
+
+公平比较口径说明：
+- 若与 `T01@100`（mAP50=0.95346）比，三组都低于基线。
+- 若做同预算公平比较（60 vs 60），应与 `T01` 的第60轮对比（mAP50=0.93807）：
+  - AdamW：+0.32%（0.94108 vs 0.93807），小幅领先。
+  - Augmentation：+0.10%（0.93896 vs 0.93807），基本持平略优。
+  - Multi-scale：-1.42%（0.92477 vs 0.93807），明显回退。
+
+阶段结论：
+- Step 9C 的公平筛选结果为：`AdamW` 最优，`Augmentation` 次优，`Multi-scale` 淘汰。
+- 下一步建议：将 `AdamW`（可选加 `Augmentation`）拉齐到 100 epochs 再与 `T01@100` 做最终决策。
+
+推进执行（2026-03-30 更新）：
+- `tune_cbam_eca_opt_adamw_e100` 已完成 100 epochs 终局验证。
+- 与 `T01@100` 对比结果：
+  - mAP50：0.95479 vs 0.95346（+0.14%）
+  - mAP50-95：0.81675 vs 0.81395（+0.34%）
+
+Step 9C 终局结论：
+- 在公平口径（100v100）下，AdamW 方案已超过 T01 基线，成为当前最佳候选。
+- 建议将 AdamW 配置（`optimizer=AdamW, lr0=0.0012, weight_decay=0.01`）固化为下一阶段默认训练配置。
+
+主线固化与继续推进（2026-03-30）：
+- 已将统一超参文件 `configs/apple_hyp.yaml` 的活动配置切换为 AdamW 主线。
+- 已登记复现实验 `tune_cbam_eca_opt_adamw_e100_seed123`（100 epochs）。
+- 推进策略：以 AdamW 为唯一默认训练入口，后续实验若无特别说明不再显式覆盖优化器参数。
+
+复现验证与冻结决策（2026-03-31）：
+- `tune_cbam_eca_opt_adamw_e100_seed123` 已完成 100 epochs：
+  - mAP50=0.95292，mAP50-95=0.81568。
+- 与 `T01@100` 对比：
+  - mAP50：-0.06%（0.95292 vs 0.95346，几乎持平）
+  - mAP50-95：+0.21%（0.81568 vs 0.81395）
+- 与 AdamW seed42（0.95479/0.81675）对比，波动在可接受范围内，结论稳定。
+
+当前决策：
+- 正式冻结 AdamW 主线配置，用于后续训练/验证默认入口。

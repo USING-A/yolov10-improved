@@ -63,16 +63,29 @@ class FocalLoss(nn.Module):
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses during training."""
 
-    def __init__(self, reg_max, use_dfl=False):
+    def __init__(self, reg_max, use_dfl=False, iou_type="ciou"):
         """Initialize the BboxLoss module with regularization maximum and DFL settings."""
         super().__init__()
         self.reg_max = reg_max
         self.use_dfl = use_dfl
+        self.iou_type = str(iou_type).lower()
+
+    def _bbox_iou(self, pred, target):
+        """Compute configurable IoU variant for bbox regression loss."""
+        if self.iou_type == "ciou":
+            return bbox_iou(pred, target, xywh=False, CIoU=True)
+        if self.iou_type == "diou":
+            return bbox_iou(pred, target, xywh=False, DIoU=True)
+        if self.iou_type == "giou":
+            return bbox_iou(pred, target, xywh=False, GIoU=True)
+        if self.iou_type == "iou":
+            return bbox_iou(pred, target, xywh=False)
+        raise ValueError(f"Unsupported iou_type={self.iou_type}. Use one of: iou, giou, diou, ciou")
 
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
         """IoU loss."""
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+        iou = self._bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask])
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
@@ -162,9 +175,18 @@ class v8DetectionLoss:
         self.device = device
 
         self.use_dfl = m.reg_max > 1
+        self.cls_loss_type = str(getattr(h, "cls_loss", "bce")).lower()
+        self.focal_gamma = float(getattr(h, "focal_gamma", 1.5))
+        self.focal_alpha = float(getattr(h, "focal_alpha", 0.25))
+        self.varifocal_loss = VarifocalLoss()
+        self.focal_loss = FocalLoss()
 
         self.assigner = TaskAlignedAssigner(topk=tal_topk, num_classes=self.nc, alpha=0.5, beta=6.0)
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=self.use_dfl).to(device)
+        self.bbox_loss = BboxLoss(
+            m.reg_max - 1,
+            use_dfl=self.use_dfl,
+            iou_type=str(getattr(h, "iou_type", "ciou")),
+        ).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
 
     def preprocess(self, targets, batch_size, scale_tensor):
@@ -230,8 +252,34 @@ class v8DetectionLoss:
         target_scores_sum = max(target_scores.sum(), 1)
 
         # Cls loss
-        # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
-        loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
+        if self.cls_loss_type == "bce":
+            loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum
+        elif self.cls_loss_type == "focal":
+            loss[1] = (
+                self.focal_loss(
+                    pred_scores,
+                    target_scores.to(dtype),
+                    gamma=self.focal_gamma,
+                    alpha=self.focal_alpha,
+                )
+                / target_scores_sum
+            )
+        elif self.cls_loss_type == "varifocal":
+            target_labels = (target_scores > 0).to(dtype)
+            loss[1] = (
+                self.varifocal_loss(
+                    pred_scores,
+                    target_scores.to(dtype),
+                    target_labels,
+                    alpha=self.focal_alpha,
+                    gamma=self.focal_gamma,
+                )
+                / target_scores_sum
+            )
+        else:
+            raise ValueError(
+                f"Unsupported cls_loss={self.cls_loss_type}. Use one of: bce, focal, varifocal"
+            )
 
         # Bbox loss
         if fg_mask.sum():
