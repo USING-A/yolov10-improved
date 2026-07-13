@@ -55,6 +55,7 @@ from ultralytics.nn.modules import (
     RepVGGDW,
     v10Detect
 )
+from ultralytics.nn.modules.distill import ReliableQueryDistiller
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, colorstr, emojis, yaml_load
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
 from ultralytics.utils.loss import v8ClassificationLoss, v8DetectionLoss, v8OBBLoss, v8PoseLoss, v8SegmentationLoss, v10DetectLoss
@@ -642,6 +643,17 @@ class WorldModel(DetectionModel):
         return x
 
 class YOLOv10DetectionModel(DetectionModel):
+    def __init__(self, cfg="yolov10n.yaml", ch=3, nc=None, verbose=True):
+        super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)
+        distill_cfg = self.yaml.get("query_distill")
+        if distill_cfg:
+            head = self.model[-1]
+            if not isinstance(head, v10Detect):
+                raise TypeError("query distillation requires a v10Detect head")
+            channels = [branch[0].conv.in_channels for branch in head.cv2]
+            self.query_distiller = ReliableQueryDistiller(channels=channels, **distill_cfg)
+            head.capture_distill_features = True
+
     def init_criterion(self):
         return v10DetectLoss(self)
 
@@ -730,7 +742,10 @@ def torch_safe_load(weight):
                 "ultralytics.yolo.data": "ultralytics.data",
             }
         ):  # for legacy 8.0 Classify and Pose models
-            ckpt = torch.load(file, map_location="cpu")
+            # Project checkpoints serialize model classes. PyTorch 2.6+
+            # defaults to weights_only=True, which breaks the established
+            # Ultralytics checkpoint format during validation/final_eval.
+            ckpt = torch.load(file, map_location="cpu", weights_only=False)
 
     except ModuleNotFoundError as e:  # e.name is missing module name
         if e.name == "models":

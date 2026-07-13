@@ -7,7 +7,9 @@ from ultralytics.utils import RANK
 class YOLOv10DetectionTrainer(DetectionTrainer):
     def get_validator(self):
         """Returns a DetectionValidator for YOLO model validation."""
-        self.loss_names = "box_om", "cls_om", "dfl_om", "box_oo", "cls_oo", "dfl_oo", 
+        self.loss_names = "box_om", "cls_om", "dfl_om", "box_oo", "cls_oo", "dfl_oo"
+        if hasattr(self.model, "query_distiller"):
+            self.loss_names += "kd_instance", "kd_relation"
         return YOLOv10DetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
         )

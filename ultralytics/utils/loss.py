@@ -718,10 +718,18 @@ class v10DetectLoss:
     def __init__(self, model):
         self.one2many = v8DetectionLoss(model, tal_topk=10)
         self.one2one = v8DetectionLoss(model, tal_topk=1)
+        self.query_distiller = getattr(model, "query_distiller", None)
+        self.detect_head = model.model[-1]
     
     def __call__(self, preds, batch):
         one2many = preds["one2many"]
         loss_one2many = self.one2many(one2many, batch)
         one2one = preds["one2one"]
         loss_one2one = self.one2one(one2one, batch)
-        return loss_one2many[0] + loss_one2one[0], torch.cat((loss_one2many[1], loss_one2one[1]))
+        loss = loss_one2many[0] + loss_one2one[0]
+        items = torch.cat((loss_one2many[1], loss_one2one[1]))
+        if self.query_distiller is not None:
+            instance_loss, relation_loss = self.query_distiller(getattr(self.detect_head, "distill_features", None), batch)
+            loss = loss + (self.query_distiller.instance_weight * instance_loss + self.query_distiller.relation_weight * relation_loss) * batch["img"].shape[0]
+            items = torch.cat((items, torch.stack((instance_loss.detach(), relation_loss.detach()))))
+        return loss, items
