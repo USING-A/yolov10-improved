@@ -729,7 +729,12 @@ class v10DetectLoss:
         loss = loss_one2many[0] + loss_one2one[0]
         items = torch.cat((loss_one2many[1], loss_one2one[1]))
         if self.query_distiller is not None:
-            instance_loss, relation_loss = self.query_distiller(getattr(self.detect_head, "distill_features", None), batch)
+            distill_features = getattr(self.detect_head, "distill_features", None)
+            instance_loss, relation_loss = self.query_distiller(distill_features, batch)
+            # The loss already owns the autograd path.  Do not retain feature
+            # tensors on the head across batches, otherwise EMA deepcopy at
+            # epoch end attempts to copy non-leaf tensors.
+            self.detect_head.distill_features = None
             loss = loss + (self.query_distiller.instance_weight * instance_loss + self.query_distiller.relation_weight * relation_loss) * batch["img"].shape[0]
             items = torch.cat((items, torch.stack((instance_loss.detach(), relation_loss.detach()))))
         return loss, items
