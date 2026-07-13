@@ -1,4 +1,6 @@
-# YOLOv10-N with training-only Grounding DINO query relation distillation.
+# YOLOv10-N with training-only Grounding DINO instance-query distillation.
+# This ablation uses the same cache/projector as the full method but removes
+# the within-image relational term.
 nc: 80
 scales:
   n: [0.33, 0.25, 1024]
@@ -6,10 +8,7 @@ query_distill:
   cache_path: D:/Github Code/yolov10-improved/datasets/grounding_dino_coco/apple_aug50_rc70_gn30/query_cache_epoch16.pt
   teacher_dim: 256
   instance_weight: 0.25
-  relation_weight: 0.10
-  # Cached GT boxes are float16.  Matching happens after the distiller maps
-  # them into YOLO's letterboxed frame, so 0.95 retains label identity while
-  # remaining robust to compact-coordinate quantization.
+  relation_weight: 0.0
   match_iou: 0.95
 
 backbone:

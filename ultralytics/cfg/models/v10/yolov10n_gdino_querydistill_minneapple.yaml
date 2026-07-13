@@ -1,15 +1,17 @@
-# YOLOv10-N with training-only Grounding DINO query relation distillation.
+# YOLOv10-N with training-only Grounding DINO query-relation distillation
+# on the isolated MinneApple grouped train split.
 nc: 80
 scales:
   n: [0.33, 0.25, 1024]
 query_distill:
-  cache_path: D:/Github Code/yolov10-improved/datasets/grounding_dino_coco/apple_aug50_rc70_gn30/query_cache_epoch16.pt
+  cache_path: D:/Github Code/yolov10-improved/datasets/grounding_dino_coco/minneapple_grouped/query_cache_epoch14.pt
   teacher_dim: 256
   instance_weight: 0.25
   relation_weight: 0.10
-  # Cached GT boxes are float16.  Matching happens after the distiller maps
-  # them into YOLO's letterboxed frame, so 0.95 retains label identity while
-  # remaining robust to compact-coordinate quantization.
+  # Cache GT boxes are compact float16 tensors.  MinneApple's dense small
+  # apples make that representation error material, so this label-identity
+  # match must tolerate quantization while teacher reliability remains gated
+  # upstream by teacher/GT IoU and confidence.
   match_iou: 0.95
 
 backbone:

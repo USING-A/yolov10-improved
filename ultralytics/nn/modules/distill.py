@@ -7,11 +7,13 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from PIL import Image
 
 from ultralytics.utils.ops import xywh2xyxy
 
 
 _CACHE_BY_PATH: dict[str, dict] = {}
+_IMAGE_SIZE_BY_PATH: dict[Path, tuple[int, int]] = {}
 
 
 def _load_records(cache_path: str) -> tuple[Path, dict]:
@@ -105,6 +107,31 @@ class ReliableQueryDistiller(nn.Module):
             return 1
         return 2
 
+    @staticmethod
+    def _letterbox_boxes(
+        boxes: torch.Tensor, image_path: Path, target_shape: tuple[int, int]
+    ) -> torch.Tensor:
+        """Map original-image normalized boxes to YOLO's letterboxed frame.
+
+        Cached GT boxes are normalized by the source image dimensions.  The
+        YOLO training batch instead stores normalized boxes after its 640-square
+        LetterBox transform, so direct matching silently fails on non-square
+        images.  This mirrors ``LetterBox._update_labels`` using its fractional
+        centre padding (the coordinates used by the label instances).
+        """
+        if image_path not in _IMAGE_SIZE_BY_PATH:
+            with Image.open(image_path) as image:
+                _IMAGE_SIZE_BY_PATH[image_path] = image.size
+        source_width, source_height = _IMAGE_SIZE_BY_PATH[image_path]
+        target_height, target_width = target_shape
+        ratio = min(target_height / source_height, target_width / source_width)
+        resized_width, resized_height = round(source_width * ratio), round(source_height * ratio)
+        pad_width, pad_height = (target_width - resized_width) / 2, (target_height - resized_height) / 2
+        scale = boxes.new_tensor((source_width * ratio, source_height * ratio, source_width * ratio, source_height * ratio))
+        offset = boxes.new_tensor((pad_width, pad_height, pad_width, pad_height))
+        normalizer = boxes.new_tensor((target_width, target_height, target_width, target_height))
+        return (boxes * scale + offset) / normalizer
+
     def forward(self, features: tuple[torch.Tensor, ...] | list[torch.Tensor] | None, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
         if not features:
             zero = batch["img"].sum() * 0
@@ -126,7 +153,9 @@ class ReliableQueryDistiller(nn.Module):
             image_gt_indices = torch.where(batch_indices == image_index)[0]
             if not len(image_gt_indices):
                 continue
-            cached_boxes = record["gt_boxes_xyxy"].to(device=device, dtype=current_boxes.dtype)
+            cached_boxes = self._letterbox_boxes(
+                record["gt_boxes_xyxy"], dataset_root / cache_key, tuple(batch["img"].shape[-2:])
+            ).to(device=device, dtype=current_boxes.dtype)
             matches = _greedy_iou_match(cached_boxes, current_boxes[image_gt_indices], self.match_iou)
             if not matches:
                 continue
